@@ -1,0 +1,67 @@
+{
+    "SleepTimeBeforeNextCheckForInActiveSenderInSeconds":30,
+    "EvaluateSenderActiveStatusAt": "*/2 * * * *",
+    "MaxInActiveTime_Minute" :3,
+    "KafkaBatchSize" : 20,
+    "WaitBetweenBatches_MiliSecond" : 0,
+    "InitialDelayInSeconds": 60,
+    "LogLevel" : "debug",
+    "KeepDockeyPrefix" :"",
+    "SkipDockeyPrefix": "",
+    "Couchbase": {
+        "Host": "192.168.26.51",
+        "Username": "administrator",
+        "Password": "dev@2021",
+        "Buckets": {
+            "SourceBucket": "CB_DEMO",
+            "DestinationBucket":"db_demo_local"
+        },
+        "DbRetryCount": 10,
+        "CBConfigDocKey" : "CBTOCB_CONFIG",
+        "CBConfigBucket" : "sink_sender_config",
+        "RetriveTimeoutSecond" : 0
+    },
+    
+    "Kafka": {
+        "Host": "192.168.26.10:9092",
+        "AutoCommit": false,
+        "Topics": {
+            "SourceTopic": "dr_cb_demo",
+            "MetricsTopic": "go_training_hardik"
+        },
+        "ConsumerGroup" : "test1",
+        "TerminationSignalWatchInterval_Second": "3"
+    },
+    
+    "HttpServer": {
+        "Port": 8000
+    },
+
+    "Receiver":{
+        "Host":"https://svc-dr-receiver-1.ns-test4:31390,https://svc-dr-receiver-2.ns-test4:31390,https://svc-dr-receiver-3.ns-test4:31390",
+        "SSL":{
+            "RootCA":""
+        },
+        "Transport":{
+            "MaxIdleConns":1000,
+		    "MaxIdleConnsPerHost":1000,
+		    "MaxConnsPerHost":1000,
+            "IdleConnTimeout":30
+        },
+        "Authorization":{
+            "Username":"",
+            "Password":""
+        },
+        "Endpoints":{
+            "Upsert":"/document/upsert",
+            "Remove":"/document/remove",
+            "Healthcheck":"/healthcheck",
+            "Cbtocbconfigration":"/getcbtocbconfiguration"
+        }
+    },
+
+    "Metrics":{
+        "LabelType": "CBTOCB",
+        "KafkaMessageKey" : "cbtocbmetrics" 
+    }
+}

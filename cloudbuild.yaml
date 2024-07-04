@@ -1,0 +1,6 @@
+steps:
+  - id: Build Image
+    name: "gcr.io/cloud-builders/docker"
+    args: ["build", "-t", "gcr.io/infra-337510/tools/datareplication/cbsender", "."]
+images: ["gcr.io/infra-337510/tools/datareplication/cbsender"]
+timeout: 2000s
