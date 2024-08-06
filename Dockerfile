@@ -1,4 +1,6 @@
-FROM gcr.io/infra-337510/artifacts/golang-alpine:1.19.2-alpine3.16
+#FROM gcr.io/infra-337510/artifacts/golang-alpine:1.19.2-alpine3.16
+
+FROM golang:1.19.2-alpine3.16
 
 # Create source and release directory 
 RUN mkdir -p /usr/src/app &&  mkdir -p /usr/local/bin/app/cert  

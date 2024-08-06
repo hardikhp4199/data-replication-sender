@@ -41,6 +41,12 @@ type KafkaValuePayload_CBtoKafka struct {
 	Event string
 }
 
+type KafkaValue_CBtoKafka_Struct struct {
+	Bucket string
+	Event  string
+	Key    string
+}
+
 //--------------------------------------------------------
 
 // Store the Channel response for
@@ -109,12 +115,4 @@ type Receiver struct {
 	ReceiverNo int
 	Host       string
 	Client     *http.Client
-}
-
-type CBConfigDetails struct {
-	SenderStatus []SenderStatusStruct `json:"SenderStatus"`
-}
-type SenderStatusStruct struct {
-	Bucket   string `json:"bucketName"`
-	IsActive bool   `json:"isActive"`
 }

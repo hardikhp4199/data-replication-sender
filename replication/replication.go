@@ -63,38 +63,6 @@ func InitializeReceiverClients() (errIntialize []error) {
 	return errIntialize
 }
 
-func changeSenderStatusAndPrintLog(currentStatus core.Status, message string, err error) {
-	if core.SenderStatus != currentStatus {
-		if err != nil {
-			logging.DoLoggingLevelBasedLogs(logging.Error, "", err)
-		} else {
-			logging.DoLoggingLevelBasedLogs(logging.Debug, message, nil)
-		}
-		core.SenderStatus = currentStatus
-	}
-}
-func DecideSenderActiveStatus() {
-	sourceSenderActiveStatus, err := getSenderStatusFromSourceCBConfiguration()
-	if err != nil {
-		changeSenderStatusAndPrintLog(core.InActiveBecauseOfInternalError, "", err)
-	} else {
-		if sourceSenderActiveStatus {
-			destinationSenderActiveStatus, err := getSenderStatusFromDestinationCBConfiguration()
-			if err != nil {
-				changeSenderStatusAndPrintLog(core.InActiveBecauseOfInternalError, "", err)
-			} else {
-				if destinationSenderActiveStatus {
-					changeSenderStatusAndPrintLog(core.InActiveBecauseOfConflict, "", errors.New("source and destination sender configuration are marked as active - so  sender is going to inactive state"))
-				} else {
-					changeSenderStatusAndPrintLog(core.Active, "sender is starting because it should be active", nil)
-				}
-			}
-		} else {
-			changeSenderStatusAndPrintLog(core.InActiveBasedOnConfigration, "", errors.New("sender is going to inactive state based on configration"))
-		}
-	}
-}
-
 // start replication
 func StartReplication() {
 	processBatch()
@@ -104,107 +72,103 @@ func StartReplication() {
 func processBatch() {
 	core.LastActiveTime = time.Now().UTC()
 
-	if core.SenderStatus == core.Active {
-		metrics := core.MetricsObservation{}
+	metrics := core.MetricsObservation{}
 
-		// batch process time measurement
-		startBatch := time.Now()
+	// batch process time measurement
+	startBatch := time.Now()
 
-		// Consume message from Kafka time
-		rtConsumeStart := time.Now()
+	// Consume message from Kafka time
+	rtConsumeStart := time.Now()
 
-		consumeMessageList, err_consume := consumeMessage(batch)
+	consumeMessageList, err_consume := consumeMessage(batch)
 
-		metrics.RtConsume = time.Since(rtConsumeStart).Milliseconds()
+	metrics.RtConsume = time.Since(rtConsumeStart).Milliseconds()
 
-		//check the any occur in batch
-		errorInPuttingDataToReceiver := false
+	//check the any occur in batch
+	errorInPuttingDataToReceiver := false
 
-		//main batch obs
-		if err_consume != nil {
-			logging.DoLoggingLevelBasedLogs(logging.Error, "", err_consume)
-		} else {
-			// actual length of batch observation
-			metrics.CountConsume = len(consumeMessageList)
+	//main batch obs
+	if err_consume != nil {
+		logging.DoLoggingLevelBasedLogs(logging.Error, "", err_consume)
+	} else {
+		// actual length of batch observation
+		metrics.CountConsume = len(consumeMessageList)
 
-			collectRoutinesResult := []core.RoutinesResult{} // collects channel response
-			// Chack the consume message length is > 0
-			if len(consumeMessageList) > 0 {
-				var rtCbTotal, rtUpdateTotal, rtDeleteTotal int64
-				var rtUpdateCount, rtDeleteCount int
+		collectRoutinesResult := []core.RoutinesResult{} // collects channel response
+		// Chack the consume message length is > 0
+		if len(consumeMessageList) > 0 {
+			var rtCbTotal, rtUpdateTotal, rtDeleteTotal int64
+			var rtUpdateCount, rtDeleteCount int
 
-				uniqueMessages := removeDuplicate(consumeMessageList)
-				filteredMessage := filterMessages(uniqueMessages)
+			uniqueMessages := removeDuplicate(consumeMessageList)
+			filteredMessage := filterMessages(uniqueMessages)
 
-				logging.DoLoggingLevelBasedLogs(logging.Debug, "unique count: "+strconv.Itoa(len(uniqueMessages))+" filtered message count: "+strconv.Itoa(len(filteredMessage)), nil)
+			logging.DoLoggingLevelBasedLogs(logging.Debug, "unique count: "+strconv.Itoa(len(uniqueMessages))+" filtered message count: "+strconv.Itoa(len(filteredMessage)), nil)
 
-				metrics.CountUnique = len(filteredMessage)
+			metrics.CountUnique = len(filteredMessage)
 
-				messageBatchs := makeMessageBatch(filteredMessage) //Divide the documnet's id by receivers
-				responseChannel := make(chan core.RoutinesResult)  // channel init
-				for _, receiverMetaData := range messageBatchs {
-					go getAndSendDocument(receiverMetaData, responseChannel)
-				}
-				//get back the channel response
-				for i := 0; i < len(messageBatchs); i++ {
-					channelRes := <-responseChannel
-					if channelRes.Error != nil {
-						errorInPuttingDataToReceiver = true
-						logging.DoLoggingLevelBasedLogs(logging.Error, "", channelRes.Error)
-					} else {
-						rtCbTotal = rtCbTotal + channelRes.RtCbTotal
-						rtUpdateTotal = rtUpdateTotal + channelRes.RtUpdateTotal
-						rtDeleteTotal = rtDeleteTotal + channelRes.RtDeleteTotal
-						if channelRes.FlagEvent {
-							rtUpdateCount = rtUpdateCount + 1
-						} else {
-							rtDeleteCount = rtDeleteCount + 1
-						}
-					}
-					collectRoutinesResult = append(collectRoutinesResult, channelRes)
-				}
-				metrics.RtCbTotal = rtCbTotal
-				metrics.RtUpdateTotal = rtUpdateTotal
-				metrics.RtDeleteTotal = rtDeleteTotal
-				metrics.CountUpdate = rtUpdateCount
-				metrics.CountDelete = rtDeleteCount
+			messageBatchs := makeMessageBatch(filteredMessage) //Divide the documnet's id by receivers
 
-				// Error checking
-				if errorInPuttingDataToReceiver {
-					for _, v := range collectRoutinesResult {
-						if v.Error != nil {
-							logging.DoLoggingLevelBasedLogs(logging.Error, "", v.Error)
-						}
-					}
-				} else {
-					startCommitTime := time.Now()
-					// kafka commit offset
-					errCommitOffset := kafka.CommitOffset(topic, consumerGroup)
-					if errCommitOffset != nil {
-						logging.DoLoggingLevelBasedLogs(logging.Error, "", logging.EnrichErrorWithStackTrace(errCommitOffset))
-					} else {
-						logging.DoLoggingLevelBasedLogs(logging.Debug, "commit offset successfully on kafka", nil)
-						endCommitTime := time.Since(startCommitTime).Milliseconds()
-						metrics.RtCommitOffset = endCommitTime
-						// ending batch process time
-						metrics.RtTotal = time.Since(startBatch).Milliseconds()
-
-						err_metrics := produceMetrics(metrics)
-						if err_metrics != nil {
-							logging.DoLoggingLevelBasedLogs(logging.Error, "", err_metrics)
-						}
-					}
-				}
+			responseChannel := make(chan core.RoutinesResult) // channel init
+			for _, receiverMetaData := range messageBatchs {
+				go getAndSendDocument(receiverMetaData, responseChannel)
 			}
-			logging.DoLoggingLevelBasedLogs(logging.Debug, "ErrorInPuttingDataToReceiver status: "+strconv.FormatBool(errorInPuttingDataToReceiver), nil)
-			if !errorInPuttingDataToReceiver {
-				time.Sleep(time.Duration(batchIntervalTime) * time.Millisecond)
-				processBatch()
+			//get back the channel response
+			for i := 0; i < len(messageBatchs); i++ {
+				channelRes := <-responseChannel
+				if channelRes.Error != nil {
+					errorInPuttingDataToReceiver = true
+					logging.DoLoggingLevelBasedLogs(logging.Error, "", channelRes.Error)
+				} else {
+					rtCbTotal = rtCbTotal + channelRes.RtCbTotal
+					rtUpdateTotal = rtUpdateTotal + channelRes.RtUpdateTotal
+					rtDeleteTotal = rtDeleteTotal + channelRes.RtDeleteTotal
+					if channelRes.FlagEvent {
+						rtUpdateCount = rtUpdateCount + 1
+					} else {
+						rtDeleteCount = rtDeleteCount + 1
+					}
+				}
+				collectRoutinesResult = append(collectRoutinesResult, channelRes)
+			}
+			metrics.RtCbTotal = rtCbTotal
+			metrics.RtUpdateTotal = rtUpdateTotal
+			metrics.RtDeleteTotal = rtDeleteTotal
+			metrics.CountUpdate = rtUpdateCount
+			metrics.CountDelete = rtDeleteCount
+
+			// Error checking
+			if errorInPuttingDataToReceiver {
+				for _, v := range collectRoutinesResult {
+					if v.Error != nil {
+						logging.DoLoggingLevelBasedLogs(logging.Error, "", v.Error)
+					}
+				}
+			} else {
+				startCommitTime := time.Now()
+				// kafka commit offset
+				errCommitOffset := kafka.CommitOffset(topic, consumerGroup)
+				if errCommitOffset != nil {
+					logging.DoLoggingLevelBasedLogs(logging.Error, "", logging.EnrichErrorWithStackTrace(errCommitOffset))
+				} else {
+					logging.DoLoggingLevelBasedLogs(logging.Debug, "commit offset successfully on kafka", nil)
+					endCommitTime := time.Since(startCommitTime).Milliseconds()
+					metrics.RtCommitOffset = endCommitTime
+					// ending batch process time
+					metrics.RtTotal = time.Since(startBatch).Milliseconds()
+
+					err_metrics := produceMetrics(metrics)
+					if err_metrics != nil {
+						logging.DoLoggingLevelBasedLogs(logging.Error, "", err_metrics)
+					}
+				}
 			}
 		}
-	} else {
-		time.Sleep(time.Second * time.Duration(sleepTimeBeforeNextCheckForInActiveSender))
-		processBatch()
+		logging.DoLoggingLevelBasedLogs(logging.Debug, "ErrorInPuttingDataToReceiver status: "+strconv.FormatBool(errorInPuttingDataToReceiver), nil)
+		if !errorInPuttingDataToReceiver {
+			time.Sleep(time.Duration(batchIntervalTime) * time.Millisecond)
+			processBatch()
+		}
 	}
 }
 
@@ -215,22 +179,15 @@ func consumeMessage(batch int) (KafkaKeyValueList []core.KafkaEventPayload, kafk
 		kafkaError = errors.New(err_consume.Error())
 	} else {
 		for _, msg := range result.Messages {
-
 			var kafKeyValue core.KafkaEventPayload
-			var keyData core.KafkaKey_CBtoKafka
-			var valueData core.KafkaValue_CBtoKafka
+			var valueData core.KafkaValue_CBtoKafka_Struct
 
 			valueErr := json.Unmarshal(msg.Value, &valueData)
 			if valueErr != nil {
 				kafkaError = logging.EnrichErrorWithStackTrace(valueErr)
 			}
-
-			keyErr := json.Unmarshal(msg.Key, &keyData)
-			if keyErr != nil {
-				kafkaError = logging.EnrichErrorWithStackTrace(keyErr)
-			}
-			kafKeyValue.Payload = keyData.Payload
-			kafKeyValue.Event = valueData.Payload.Event
+			kafKeyValue.Payload = valueData.Key
+			kafKeyValue.Event = valueData.Event
 			KafkaKeyValueList = append(KafkaKeyValueList, kafKeyValue)
 		}
 	}
@@ -238,6 +195,7 @@ func consumeMessage(batch int) (KafkaKeyValueList []core.KafkaEventPayload, kafk
 }
 
 // based on the latest payload event
+// pay load means key
 func removeDuplicate(KafkaKeyValueSlice []core.KafkaEventPayload) map[string]string {
 	KafkaKeyValueMap := make(map[string]string)
 
@@ -414,49 +372,6 @@ func produceMetrics(metrics core.MetricsObservation) (errout error) {
 			errout = nil
 		}
 		logging.DoLoggingLevelBasedLogs(logging.Debug, "successfully produce metrics on kafka", nil)
-	}
-	return
-}
-
-func getCBConfig(bucketName string, documentKey string) (cbConfigResponse core.CBConfigDetails, errOut error) {
-	_, errGet := couchbase.GetDocument(bucketName, documentKey, &cbConfigResponse)
-	if errGet != nil {
-		errOut = logging.EnrichErrorWithStackTrace(errGet)
-	}
-	return
-}
-
-func getSenderStatusFromSourceCBConfiguration() (senderActiveStatus bool, errOut error) {
-	cbSenderConfigDetails, err := getCBConfig(cbConfigBucket, cbConfigDocKey)
-	if err != nil {
-		errOut = err
-	} else {
-		for _, cbSenderConfigDetail := range cbSenderConfigDetails.SenderStatus {
-			if strings.ToLower(cbSenderConfigDetail.Bucket) == strings.ToLower(sourceBucket) {
-				senderActiveStatus = cbSenderConfigDetail.IsActive
-				break
-			}
-		}
-	}
-	return
-}
-
-func getSenderStatusFromDestinationCBConfiguration() (senderActiveStatus bool, errOut error) {
-	if len(receiverDomainsArray) > 0 {
-		cbSenderConfigDetails, err := getDestinationSenderConfig(receiverGlobalConnections[0].Host, receiverGlobalConnections[0].Client)
-		if err != nil {
-			errOut = err
-		} else {
-			for _, cbSenderConfigDetail := range cbSenderConfigDetails.SenderStatus {
-				if strings.ToLower(cbSenderConfigDetail.Bucket) == strings.ToLower(destinationBucket) {
-					senderActiveStatus = cbSenderConfigDetail.IsActive
-					break
-				}
-			}
-		}
-	} else {
-		senderActiveStatus = false
-		errOut = logging.EnrichErrorWithStackTrace(errors.New("no receiver found"))
 	}
 	return
 }

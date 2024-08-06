@@ -9,8 +9,6 @@ import (
 	"datareplication_sender/storage/logging"
 	"strconv"
 	"time"
-
-	"github.com/go-co-op/gocron"
 )
 
 var (
@@ -38,14 +36,6 @@ func main() {
 		// all the receiver status is active then processBatch
 		if len(errInit) <= 0 {
 			logging.DoLoggingLevelBasedLogs(logging.Debug, "all receiver connected successfully.", nil)
-
-			// check whether to activate sender or not - first time check
-			replication.DecideSenderActiveStatus()
-
-			// check whether to activate sender or not - keep checking at defined interval
-			s := gocron.NewScheduler(time.UTC)
-			s.Cron(evaluateSenderActiveStatusAt).Do(replication.DecideSenderActiveStatus)
-			s.StartAsync()
 
 			// start cbtocb replication process
 			go replication.StartReplication()

@@ -2,19 +2,19 @@
     "SleepTimeBeforeNextCheckForInActiveSenderInSeconds":30,
     "EvaluateSenderActiveStatusAt": "*/1 * * * *",
     "MaxInActiveTime_Minute" :3,
-    "KafkaBatchSize" : 10,
+    "KafkaBatchSize" : 100,
     "WaitBetweenBatches_MiliSecond" : 10000,
     "InitialDelayInSeconds": 0,
     "LogLevel" : "debug",
     "KeepDockeyPrefix" :"",
     "SkipDockeyPrefix": "",
     "Couchbase": {
-        "Host": "192.168.26.51",
-        "Username": "administrator",
-        "Password": "dev@2021",
+        "Host": "62.169.27.203",
+        "Username": "Administrator",
+        "Password": "Arati@17092000",
         "Buckets": {
-            "SourceBucket": "CB_DEMO",
-            "DestinationBucket":"cbdcp_test"
+            "SourceBucket": "demo",
+            "DestinationBucket":"demo-replica"
         },
         "DbRetryCount": 10,
         "CBConfigDocKey" : "CBTOCB_CONFIG",
@@ -23,11 +23,11 @@
     },
     
     "Kafka": {
-        "Host": "192.168.26.5:30940",
+        "Host": "62.169.27.203:31522",
         "AutoCommit": false,
         "Topics": {
-            "SourceTopic": "dr_cb_demo",
-            "MetricsTopic": "go_training_hardik"
+            "SourceTopic": "dr_demo",
+            "MetricsTopic": "de_demo_metrics"
         },
         "ConsumerGroup" : "dr_cb_demo",
         "TerminationSignalWatchInterval_Second": "3"
@@ -38,9 +38,9 @@
     },
 
     "Receiver":{
-        "Host":"https://localhost:8000",
+        "Host":"http://localhost:8000,http://localhost:8001,http://localhost:8002",
         "SSL":{
-            "RootCA":"./cert/rootCA.crt"
+            "RootCA":""
         },
         "Transport":{
             "MaxIdleConns":1000,

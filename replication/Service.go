@@ -68,44 +68,6 @@ func sendToReceiver(clientObj core.Receiver, cbResponse core.DocumentMetaData, e
 	return
 }
 
-func getDestinationSenderConfig(receiverURL string, clientObj *http.Client) (cbConfigResponse core.CBConfigDetails, errOut error) {
-	receiverURL = receiverURL + cbtocbconfigrationEndpoint
-
-	request, httperr := http.NewRequest("POST", receiverURL, nil)
-	request.SetBasicAuth(receiverAuthUsername, receiverAuthPassword)
-
-	request.Header.Add("Content-Encoding", "gzip")
-	request.Header.Add("Content-Type", "application/json")
-
-	if httperr != nil {
-		errOut = httperr
-	} else {
-		response, res_error := clientObj.Do(request)
-		if res_error != nil {
-			errOut = logging.EnrichErrorWithStackTrace(res_error)
-		} else if response.StatusCode == http.StatusUnauthorized {
-			errOut = logging.EnrichErrorWithStackTrace(errors.New("receiver api (" + receiverURL + ") didn't respond with ok status. Returened status is: " + response.Status))
-		} else {
-			defer response.Body.Close()
-			var res core.ResponseResult
-
-			decodeError := json.NewDecoder(response.Body).Decode(&res)
-
-			if decodeError != nil {
-				errOut = logging.EnrichErrorWithStackTrace(decodeError)
-			} else if res.Status == core.Error {
-				errOut = logging.EnrichErrorWithStackTrace(errors.New(res.ErrorMessage))
-			} else {
-				jsonUnmarshalErr := json.Unmarshal([]byte(res.SuccessMessage), &cbConfigResponse)
-				if jsonUnmarshalErr != nil {
-					errOut = logging.EnrichErrorWithStackTrace(jsonUnmarshalErr)
-				}
-			}
-		}
-	}
-	return
-}
-
 func healthCheck(receiver core.Receiver) (healthChaekError error) {
 	healthCheckURL := receiver.Host + healthcheckEndpoint
 
